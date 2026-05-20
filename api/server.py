@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from config import GPT_CONFIG_124M
+from config import GPT_CONFIG_124M, GPT_CONFIG_124M_TRAIN
 from tokenizer import BPETokenizer
 from transformer import GPTModel
 from training import generate_text
@@ -37,19 +37,28 @@ def _resolve_device() -> str:
     return "cpu"
 
 
-def _load_model(checkpoint_path: Path, device: str) -> GPTModel:
-    model = GPTModel(GPT_CONFIG_124M)
+def _load_model(checkpoint_path: Path, device: str) -> tuple[GPTModel, dict]:
+    cfg = dict(GPT_CONFIG_124M)
     if checkpoint_path.is_file():
         try:
-            state = torch.load(
-                checkpoint_path, map_location=device, weights_only=True
+            checkpoint = torch.load(
+                checkpoint_path, map_location=device, weights_only=False
             )
         except TypeError:
-            state = torch.load(checkpoint_path, map_location=device)
-        model.load_state_dict(state)
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+        if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+            cfg = checkpoint.get("config", GPT_CONFIG_124M_TRAIN)
+            state_dict = checkpoint["model_state_dict"]
+        else:
+            state_dict = checkpoint
+            cfg = GPT_CONFIG_124M_TRAIN
+        model = GPTModel(cfg)
+        model.load_state_dict(state_dict)
+    else:
+        model = GPTModel(cfg)
     model.to(device)
     model.eval()
-    return model
+    return model, cfg
 
 
 class AppState:
@@ -58,6 +67,7 @@ class AppState:
     device: str = "cpu"
     checkpoint_loaded: bool = False
     checkpoint_path: str = ""
+    model_config: dict = {}
 
 
 state = AppState()
@@ -69,7 +79,7 @@ async def lifespan(_app: FastAPI):
     checkpoint = Path(os.getenv("LLM_CHECKPOINT", str(DEFAULT_CHECKPOINT)))
     state.checkpoint_path = str(checkpoint)
     state.tokenizer = BPETokenizer()
-    state.model = _load_model(checkpoint, state.device)
+    state.model, state.model_config = _load_model(checkpoint, state.device)
     state.checkpoint_loaded = checkpoint.is_file()
     yield
 

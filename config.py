@@ -23,11 +23,17 @@ Model Sizes:
 GPT_CONFIG_124M = {
     "vocab_size": 50257,      # GPT-2 vocabulary size
     "emb_dim": 768,           # Embedding dimension
-    "context_length": 1024,   # Maximum sequence length
+    "context_length": 1024,   # Maximum sequence length (inference default)
     "n_layers": 12,           # Number of transformer blocks
     "n_heads": 12,            # Number of attention heads per block
     "drop_rate": 0.1,         # Dropout probability
     "qkv_bias": False         # No bias in Q, K, V projections
+}
+
+# Training config for small corpora (matches LLM Pretraining.ipynb)
+GPT_CONFIG_124M_TRAIN = {
+    **GPT_CONFIG_124M,
+    "context_length": 256,
 }
 
 # Additional configurations can be added here:
